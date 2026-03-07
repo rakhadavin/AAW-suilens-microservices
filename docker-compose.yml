@@ -23,6 +23,8 @@ services:
     environment:
       DATABASE_URL: postgres://inventory:inventory@inventory-db:5432/inventory
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      ORDER_SERVICE_URL: http://order-service:3002
+
     depends_on:
       inventory-db:
         condition: service_healthy

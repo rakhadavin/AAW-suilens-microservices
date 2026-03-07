@@ -1,77 +1,112 @@
-import { db } from './index';
-import { branches, inventory } from './schema';
-import { sql } from 'drizzle-orm';
+import { db } from "./index";
+import { branches, inventory } from "./schema";
+import { eq } from "drizzle-orm";
 
-export async function seedInventory() {
-  await db.insert(branches).values([
-    {
-      code: 'KB-JKT-S',
-      name: 'Kebayoran Baru',
-      address: 'Jakarta Selatan',
-    },
-    {
-      code: 'KB-JKT-E',
-      name: 'Jatinegara',
-      address: 'Jakarta Timur',
-    },
-    {
-      code: 'KB-JKT-N',
-      name: 'Kelapa Gading',
-      address: 'Jakarta Utara',
-    },
-  ]).onConflictDoNothing();
+const CATALOG_SERVICE_URL = process.env.CATALOG_SERVICE_URL || "http://catalog-service:3001";
 
-  // pakai lensId dari catalog seed kamu
-  await db.insert(inventory).values([
-    {
-      lensId: '57e27c5e-103f-457e-8841-8d90d658bfff',
-      branchCode: 'KB-JKT-S',
-      totalQuantity: 3,
-      availableQuantity: 3,
-    },
-    {
-      lensId: '57e27c5e-103f-457e-8841-8d90d658bfff',
-      branchCode: 'KB-JKT-E',
-      totalQuantity: 1,
-      availableQuantity: 1,
-    },
-    {
-      lensId: '57e27c5e-103f-457e-8841-8d90d658bfff',
-      branchCode: 'KB-JKT-N',
-      totalQuantity: 0,
-      availableQuantity: 0,
-    },
-    {
-      lensId: '8cc3e83b-5832-457d-ba51-c94eac029cee',
-      branchCode: 'KB-JKT-S',
-      totalQuantity: 2,
-      availableQuantity: 2,
-    },
-    {
-      lensId: '8cc3e83b-5832-457d-ba51-c94eac029cee',
-      branchCode: 'KB-JKT-E',
-      totalQuantity: 1,
-      availableQuantity: 1,
-    },
-    {
-      lensId: '54d312b4-78b5-477f-9046-8fafd0f5c08d',
-      branchCode: 'KB-JKT-N',
-      totalQuantity: 1,
-      availableQuantity: 1,
-    },
-  ]).onConflictDoNothing();
-
-  
+interface CatalogLens {
+  id: string;
+  modelName: string;
+  manufacturerName: string;
 }
 
+async function fetchLensesWithRetry(retries = 10, delayMs = 2000): Promise<CatalogLens[]> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(`${CATALOG_SERVICE_URL}/api/lenses`);
+      if (!res.ok) throw new Error(`Catalog responded with ${res.status}`);
+      const data = await res.json();
+      return data as CatalogLens[];
+    } catch (err) {
+      console.log(`Catalog not ready yet, retry ${i + 1}/${retries}...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 
-// seedInventory()
-//   .then(() => process.exit(0))
-//   .catch((err) => {
-//     console.error('Inventory seed failed:', err);
-//     process.exit(1);
-//   });
+  throw new Error("Failed to fetch lenses from catalog-service after retries");
+}
 
+export async function seedInventory() {
+  console.log("Seeding inventory branches...");
+
+  await db
+    .insert(branches)
+    .values([
+      {
+        code: "KB-JKT-S",
+        name: "Kebayoran Baru",
+        address: "Jakarta Selatan",
+      },
+      {
+        code: "KB-JKT-E",
+        name: "Jatinegara",
+        address: "Jakarta Timur",
+      },
+      {
+        code: "KB-JKT-N",
+        name: "Kelapa Gading",
+        address: "Jakarta Utara",
+      },
+    ])
+    .onConflictDoNothing();
+
+  console.log("Fetching lenses from catalog-service...");
+  const lenses = await fetchLensesWithRetry();
+
+  const summilux = lenses.find((l) => l.modelName === "Summilux-M 35mm f/1.4 ASPH.");
+  const sigma = lenses.find((l) => l.modelName === "Art 24-70mm f/2.8 DG DN");
+  const nikkor = lenses.find((l) => l.modelName === "NIKKOR Z 70-200mm f/2.8 VR S");
+
+  if (!summilux || !sigma || !nikkor) {
+    throw new Error("Required lenses not found in catalog-service");
+  }
+
+  console.log("Seeding inventory stock...");
+
+  await db
+    .insert(inventory)
+    .values([
+      {
+        lensId: summilux.id,
+        branchCode: "KB-JKT-S",
+        totalQuantity: 3,
+        availableQuantity: 3,
+      },
+      {
+        lensId: summilux.id,
+        branchCode: "KB-JKT-E",
+        totalQuantity: 1,
+        availableQuantity: 1,
+      },
+      {
+        lensId: summilux.id,
+        branchCode: "KB-JKT-N",
+        totalQuantity: 0,
+        availableQuantity: 0,
+      },
+      {
+        lensId: sigma.id,
+        branchCode: "KB-JKT-S",
+        totalQuantity: 2,
+        availableQuantity: 2,
+      },
+      {
+        lensId: sigma.id,
+        branchCode: "KB-JKT-E",
+        totalQuantity: 1,
+        availableQuantity: 1,
+      },
+      {
+        lensId: nikkor.id,
+        branchCode: "KB-JKT-N",
+        totalQuantity: 1,
+        availableQuantity: 1,
+      },
+    ])
+    .onConflictDoNothing();
+
+  console.log("Inventory seed complete.");
+}
 
 seedInventory().catch((error) => {
   console.error(error);
