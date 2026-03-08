@@ -2,7 +2,7 @@ import { db } from "./index";
 import { branches, inventory } from "./schema";
 import { eq } from "drizzle-orm";
 
-const CATALOG_SERVICE_URL = process.env.CATALOG_SERVICE_URL || "http://catalog-service:3001";
+const CATALOG_SERVICE_URL = process.env.CATALOG_SERVICE_URL || "http://localhost:3001";
 
 interface CatalogLens {
   id: string;

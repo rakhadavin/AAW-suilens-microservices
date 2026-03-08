@@ -16,67 +16,102 @@ interface CatalogLens {
 
 const app = new Elysia()
   .use(cors())
-  .post('/api/orders', async ({ body }) => {
-    const lensResponse = await fetch(`${CATALOG_SERVICE_URL}/api/lenses/${body.lensId}`);
-    if (!lensResponse.ok) {
-      return new Response(JSON.stringify({ error: 'Lens not found' }), { status: 404 });
-    }
-    const lens = await lensResponse.json() as CatalogLens;
+  .post(
+    "/api/orders",
+    async ({ body }) => {
+      const lensResponse = await fetch(`${CATALOG_SERVICE_URL}/api/lenses/${body.lensId}`);
+      console.log("LENS RESPONSE :\n", lensResponse);
+      if (!lensResponse.ok) {
+        return new Response(JSON.stringify({ error: "Lens not found" }), { status: 404 });
+      }
+      const lens = (await lensResponse.json()) as CatalogLens;
 
-    const start = new Date(body.startDate);
-    const end = new Date(body.endDate);
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    if (days <= 0) {
-      return new Response(
-        JSON.stringify({ error: 'End date must be after start date' }),
-        { status: 400 }
-      );
-    }
-    const totalPrice = (days * parseFloat(lens.dayPrice)).toFixed(2);
+      const start = new Date(body.startDate);
+      const end = new Date(body.endDate);
+      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (days <= 0) {
+        return new Response(JSON.stringify({ error: "End date must be after start date" }), { status: 400 });
+      }
+      const totalPrice = (days * parseFloat(lens.dayPrice)).toFixed(2);
 
-    const [order] = await db.insert(orders).values({
-      customerName: body.customerName,
-      customerEmail: body.customerEmail,
-      lensId: body.lensId,
-      lensSnapshot: {
-        modelName: lens.modelName,
-        manufacturerName: lens.manufacturerName,
-        dayPrice: lens.dayPrice,
-      },
-      startDate: start,
-      endDate: end,
-      totalPrice,
-    }).returning();
+      const [order] = await db
+        .insert(orders)
+        .values({
+          customerName: body.customerName,
+          customerEmail: body.customerEmail,
+          lensId: body.lensId,
+          branchCode: body.branchCode,
+          quantity: 1,
+          lensSnapshot: {
+            modelName: lens.modelName,
+            manufacturerName: lens.manufacturerName,
+            dayPrice: lens.dayPrice,
+          },
+          startDate: start,
+          endDate: end,
+          totalPrice,
+        })
+        .returning();
+      if (!order) {
+        return new Response(JSON.stringify({ error: "Failed to create order" }), { status: 500 });
+      }
+
+      await publishEvent("order.placed", {
+        orderId: order.id,
+        customerName: body.customerName,
+        customerEmail: body.customerEmail,
+        lensName: lens.modelName,
+      });
+
+      return new Response(JSON.stringify(order), { status: 201 });
+    },
+    {
+      body: t.Object({
+        customerName: t.String(),
+        customerEmail: t.String({ format: "email" }),
+        lensId: t.String({ format: "uuid" }),
+        branchCode: t.String(),
+        startDate: t.String(),
+        endDate: t.String(),
+      }),
+    },
+  )
+  .patch("/api/orders/:id/cancel", async ({ params }) => {
+    const existing = await db.select().from(orders).where(eq(orders.id, params.id));
+    const order = existing[0];
+
     if (!order) {
-      return new Response(JSON.stringify({ error: 'Failed to create order' }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
     }
 
-    await publishEvent('order.placed', {
-      orderId: order.id,
-      customerName: body.customerName,
-      customerEmail: body.customerEmail,
-      lensName: lens.modelName,
+    if (order.status === "cancelled") {
+      return new Response(JSON.stringify(order), { status: 200 });
+    }
+
+    const [updatedOrder] = await db.update(orders).set({ status: "cancelled" }).where(eq(orders.id, params.id)).returning();
+
+    if (!updatedOrder) {
+      return new Response(JSON.stringify({ error: "Failed to cancel order" }), { status: 500 });
+    }
+
+    await publishEvent("order.cancelled", {
+      orderId: updatedOrder.id,
+      lensId: updatedOrder.lensId,
+      branchCode: updatedOrder.branchCode,
+      quantity: updatedOrder.quantity,
     });
 
-    return new Response(JSON.stringify(order), { status: 201 });
-  }, {
-    body: t.Object({
-      customerName: t.String(),
-      customerEmail: t.String({ format: 'email' }),
-      lensId: t.String({ format: 'uuid' }),
-      startDate: t.String(),
-      endDate: t.String(),
-    }),
+    return new Response(JSON.stringify(updatedOrder), { status: 200 });
   })
-  .get('/api/orders', async () => db.select().from(orders))
-  .get('/api/orders/:id', async ({ params }) => {
+  .get("/api/orders", async () => db.select().from(orders))
+  .get("/api/orders/:id", async ({ params }) => {
     const results = await db.select().from(orders).where(eq(orders.id, params.id));
     if (!results[0]) {
-      return new Response(JSON.stringify({ error: 'Order not found' }), { status: 404 });
+      return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
     }
     return results[0];
   })
-  .get('/health', () => ({ status: 'ok', service: 'order-service' }))
+  .get("/health", () => ({ status: "ok", service: "order-service" }))
   .listen(3002);
 
 console.log(`Order Service running on port ${app.server?.port}`);
