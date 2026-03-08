@@ -1,4 +1,6 @@
 Rakha Davin Bani Alamsyah
+Microservice Repo : https://github.com/rakhadavin/AAW-suilens-microservices/tree/inventory-service (open in inventory-service branch)
+Monolith Repo : https://github.com/rakhadavin/AAW-suilens-monoltih
 
 # PENUGASAN (Bagian 2)
 
