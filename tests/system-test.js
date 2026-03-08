@@ -67,10 +67,20 @@ async function test() {
     })
   });
 
-  const order = await orderRes.json();
+  const rawOrderText = await orderRes.text();
+  console.log("Create order status:", orderRes.status);
+  console.log("Create order raw response:", rawOrderText);
 
+  let order;
+  try {
+    order = JSON.parse(rawOrderText);
+  } catch (err) {
+    order = { raw: rawOrderText };
+  }
+  if (!orderRes.ok) {
+    throw new Error(`Failed to create order: ${rawOrderText}`);
+  }
   console.log("Order created:", order);
-
   const orderId = order.id;
 
   // 5. Inventory after order
@@ -85,10 +95,24 @@ async function test() {
   console.log("\nCancelling order...");
 
   const cancelRes = await fetch(`${ORDER}/api/orders/${orderId}/cancel`, {
-    method: "PATCH"
+    method: "PATCH",
   });
+  const cancelRaw = await cancelRes.text();
+  console.log("Cancel status:", cancelRes.status);
+  console.log("Cancel raw response:", cancelRaw);
 
-  const cancel = await cancelRes.json();
+  let cancel;
+  try {
+    cancel = JSON.parse(cancelRaw);
+  } catch {
+    cancel = { raw: cancelRaw };
+  }
+
+  if (!cancelRes.ok) {
+    throw new Error(`Failed to cancel order: ${cancelRaw}`);
+  }
+
+  console.log("Cancel result:", cancel);
 
   console.log("Cancel result:", cancel);
 
