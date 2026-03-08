@@ -93,9 +93,11 @@ const app = new Elysia()
   .listen(3004);
 
 async function bootstrap() {
-  await seedInventory();
+  // await seedInventory();
   await startInventoryConsumer();
   console.log(`Inventory Service running on port ${app.server?.port}`);
 }
+
+
 
 bootstrap();

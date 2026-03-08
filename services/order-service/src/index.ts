@@ -58,10 +58,17 @@ const app = new Elysia()
 
       await publishEvent("order.placed", {
         orderId: order.id,
-        customerName: body.customerName,
-        customerEmail: body.customerEmail,
-        lensName: lens.modelName,
+        lensId: order.lensId,
+        branchCode: order.branchCode,
+        quantity: order.quantity,
       });
+
+      // await publishEvent("order.placed", {
+      //   orderId: order.id,
+      //   customerName: body.customerName,
+      //   customerEmail: body.customerEmail,
+      //   lensName: lens.modelName,
+      // });
 
       return new Response(JSON.stringify(order), { status: 201 });
     },
