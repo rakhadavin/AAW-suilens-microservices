@@ -2,9 +2,10 @@
  * main.ts
  *
  * Bootstraps Vuetify and other plugins then mounts the App`
- */
+*/
 
 // Composables
+import { VueQueryPlugin } from "@tanstack/vue-query";
 import { createApp } from 'vue'
 
 // Plugins
@@ -21,5 +22,6 @@ import './styles/main.scss'
 const app = createApp(App)
 
 registerPlugins(app)
+app.use(VueQueryPlugin);
 
 app.mount('#app')

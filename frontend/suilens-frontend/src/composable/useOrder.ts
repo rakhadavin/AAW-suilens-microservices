@@ -1,14 +1,14 @@
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
+import { useMutation, useQueryClient } from "@tanstack/vue-query";
 
-const API_BASE = import.meta.env.VITE_ORDER_API || 'http://localhost:3002';
+const API_BASE = import.meta.env.VITE_ORDER_API || "http://localhost:3002";
 
 interface CreateOrderPayload {
-  customerName: string
-  customerEmail: string
-  lensId: string
-  branchCode: string
-  startDate: string
-  endDate: string
+  customerName: string;
+  customerEmail: string;
+  lensId: string;
+  branchCode: string;
+  startDate: string;
+  endDate: string;
 }
 
 export function useOrder() {
@@ -17,18 +17,28 @@ export function useOrder() {
   return useMutation({
     mutationFn: async (payload: CreateOrderPayload) => {
       const response = await fetch(`${API_BASE}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create order');
+
+      const raw = await response.text();
+
+      let data: any;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { raw };
       }
-      return response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || raw || "Failed to create order");
+      }
+
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
   });
 }

@@ -25,7 +25,7 @@
 
           <div class="field full">
             <label>Lens</label>
-            <select v-model="form.lensId" @change="onLensChange">
+            <select v-model="form.lensId">
               <option value="">Select lens</option>
               <option v-for="lens in lenses" :key="lens.id" :value="lens.id">
                 {{ lens.manufacturerName }} - {{ lens.modelName }}
@@ -47,7 +47,7 @@
               </option>
             </select>
             <small class="help" v-if="inventoryLoading">Loading branch stock...</small>
-            <small class="error" v-if="inventoryError">{{ inventoryError }}</small>
+            <small class="error" v-if="inventoryError">{{ inventoryError.message }}</small>
           </div>
 
           <div class="field">
@@ -62,21 +62,21 @@
         </div>
 
         <div class="actions">
-          <button class="btn primary" :disabled="orderLoading" @click="submitOrder">
-            {{ orderLoading ? 'Submitting...' : 'Create Order' }}
+          <button class="btn primary" :disabled="createOrder.isPending.value" @click="submitOrder">
+            {{ createOrder.isPending.value ? 'Submitting...' : 'Create Order' }}
           </button>
 
           <button
             class="btn danger"
-            :disabled="!createdOrderId || orderLoading"
+            :disabled="!createdOrderId || cancelOrder.isPending.value"
             @click="submitCancel"
           >
             Cancel Latest Order
           </button>
         </div>
 
-        <p v-if="orderError" class="error block">{{ orderError }}</p>
-        <p v-if="orderSuccess" class="success block">{{ orderSuccess }}</p>
+        <p v-if="actionError" class="error block">{{ actionError }}</p>
+        <p v-if="actionSuccess" class="success block">{{ actionSuccess }}</p>
       </section>
 
       <section class="card">
@@ -114,33 +114,17 @@
   </div>
 </template>
 
+
 <script setup lang="ts">
-import { computed, onMounted, reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useInventory } from '../composable/useInventory'
-import { useOrder } from '../composable/useOrder'
 import { useLenses } from '../composable/useLenses'
+import { useOrder } from '../composable/useOrder'
+import { useCancelOrder } from '../composable/useCancelOrder'
 
 defineEmits<{
-  (e: 'go-home'): void
-  (e: 'go-guide'): void
+  (e: 'go-home' | 'go-guide'): void
 }>()
-
-const { lenses, fetchLenses } = useLenses()
-const {
-  branches,
-  loading: inventoryLoading,
-  error: inventoryError,
-  fetchInventoryByLens,
-} = useInventory()
-
-const {
-  loading: orderLoading,
-  error: orderError,
-  success: orderSuccess,
-  latestOrder,
-  createOrder,
-  cancelOrder,
-} = useOrder()
 
 const form = reactive({
   customerName: 'System Test',
@@ -151,43 +135,80 @@ const form = reactive({
   endDate: '2025-03-12',
 })
 
+const actionError = ref('')
+const actionSuccess = ref('')
+const latestOrder = ref<any | null>(null)
+
+const { data: lensesData } = useLenses()
+
+const {
+  data: inventoryData,
+  isLoading: inventoryLoading,
+  error: inventoryError,
+  refetch,
+} = useInventory(computed(() => form.lensId))
+
+const createOrder = useOrder()
+const cancelOrder = useCancelOrder()
+
+const lenses = computed(() => lensesData.value ?? [])
+const branches = computed(() => inventoryData.value?.branches ?? [])
+
 const availableBranchOptions = computed(() =>
   branches.value.filter((branch) => branch.availableQuantity > 0)
 )
 
 const createdOrderId = computed(() => latestOrder.value?.id || '')
 
-async function onLensChange() {
-  form.branchCode = ''
-  if (form.lensId) {
-    await fetchInventoryByLens(form.lensId)
+watch(
+  () => form.lensId,
+  () => {
+    form.branchCode = ''
   }
-}
+)
 
 async function submitOrder() {
-  await createOrder({ ...form })
-  if (form.lensId) {
-    await fetchInventoryByLens(form.lensId)
+  actionError.value = ''
+  actionSuccess.value = ''
+
+  try {
+    const result = await createOrder.mutateAsync({ ...form })
+    latestOrder.value = result
+    actionSuccess.value = 'Order created successfully'
+
+    if (form.lensId) {
+      await refetch()
+    }
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : 'Failed to create order'
   }
 }
 
 async function submitCancel() {
   if (!createdOrderId.value) return
-  await cancelOrder(createdOrderId.value)
-  if (form.lensId) {
-    await fetchInventoryByLens(form.lensId)
+
+  actionError.value = ''
+  actionSuccess.value = ''
+
+  try {
+    const result = await cancelOrder.mutateAsync(createdOrderId.value)
+    latestOrder.value = result
+    actionSuccess.value = 'Order cancelled successfully'
+
+    if (form.lensId) {
+      await refetch()
+    }
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : 'Failed to cancel order'
   }
 }
-
-onMounted(async () => {
-  await fetchLenses()
-})
 </script>
 
 <style scoped>
 .page {
   display: grid;
   gap: 20px;
+  color: #0f172a;
 }
 .topbar {
   display: flex;
@@ -210,6 +231,12 @@ onMounted(async () => {
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+  color: #0f172a;
+}
+h2,
+label,
+strong {
+  color: #0f172a;
 }
 .form-grid {
   display: grid;
@@ -224,15 +251,14 @@ onMounted(async () => {
   flex-direction: column;
   gap: 8px;
 }
-label {
-  font-weight: 600;
-}
 input,
 select {
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 14px;
+  color: #0f172a;
+  background: white;
 }
 .actions {
   margin-top: 16px;
